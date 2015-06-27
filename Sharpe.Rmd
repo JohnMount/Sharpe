@@ -64,8 +64,14 @@ compReturn <- function(Investment,k,colName) {
 SharpeRatio <- function(Investment,column,window) {
   means <- rollapply(Investment[[column]],width=window,FUN=mean)
   sds <- rollapply(Investment[[column]],width=window,FUN=sd)
-  sr <- c(rep(NA,nrow(Investment)-length(means)),means/sds)
-  sr
+  pad <- rep(NA,nrow(Investment)-length(means))
+  sr <- c(pad,means/sds)
+  means <- c(pad,means)
+  sds <- c(pad,sds)
+  Investment[[paste('Mean',column,sep='_')]] <- means
+  Investment[[paste('StdDev',column,sep='_')]] <- sds
+  Investment[[paste('SharpeRatio',column,sep='_')]] <- sr
+  Investment
 }
 
 
@@ -150,12 +156,17 @@ for(instName in c('SP.csv','TENZ.csv')) {
             geom_point() + geom_smooth() +
             ggtitle(stepName))
     ncol <- paste('SharpeRatio',col,sep='_')
-    Investment[[ncol]] <- SharpeRatio(Investment,col,window)
+    Investment <- SharpeRatio(Investment,col,window)
+#     print(ggplot(Investment[!is.na(Investment[[ncol]]),,drop=FALSE],
+#                  aes_string(x='day')) + 
+#             geom_point(aes_string(y=paste('Mean',col,sep='_'))) + 
+#             geom_point(aes_string(y=paste('StdDev',col,sep='_'))) + 
+#             ggtitle(paste(stepName,'\nreturn mean/stdev window=',window,'days')))
     print(summary(Investment[[ncol]]))
     print(ggplot(Investment[!is.na(Investment[[ncol]]),,drop=FALSE],
                  aes_string(x='day',y=ncol)) + 
             geom_point() + 
-            ggtitle(paste(stepName,"\nSharpe ratio",col,'\nwindow=',window,'days')))
+            ggtitle(paste(stepName,'\nSharpe ratio window=',window,'days')))
     print('*****************************************')
   }
   print('********************************************************')
