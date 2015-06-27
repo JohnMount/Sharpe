@@ -1,5 +1,5 @@
 
-6-27-2015
+Code and data for article: http://www.win-vector.com/blog/2015/06/what-is-a-good-sharpe-ratio/
 
 S&P close prices from Yahoo finance:
   S&P 500
