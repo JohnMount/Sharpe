@@ -11,3 +11,13 @@
 # produced vignettes
 vignettes/*.html
 vignettes/*.pdf
+
+# general stuff
+.DS_Store
+*~
+
+# RStudio
+.Rhistory
+.Rproj.user
+
+

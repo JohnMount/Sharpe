@@ -1,0 +1,166 @@
+---
+title: "SharpeRatio"
+author: "John Mount"
+date: "June 27, 2015"
+output: html_document
+---
+
+
+```{r}
+# prevent library(sqldf) from triggering a tcl/tk dependency which causes R to exit on OS X if X11 isn’t installed. See https://code.google.com/p/sqldf/ for troubleshooting details.
+options(gsubfn.engine = "R")
+library('sqldf')
+library('ggplot2')
+library('zoo')
+
+
+# days : increasing sequence of integers
+# k : positive number 
+# return data frame days,prev where prev=max day<=prev-k
+lagDays <- function(days,k) {
+  prevI <- 1
+  dayVec <- numeric(length(days))
+  prevVec <- numeric(length(days))
+  i <- 0
+  for(curI in seq(2,length(days))) {
+    while((prevI<curI-1)&&(days[prevI+1]<=days[curI]-k)) {
+      prevI <- prevI + 1
+    }
+    if(days[prevI]<=days[curI]-k) {
+      i <- i+1
+      dayVec[[i]] <- days[curI]
+      prevVec[[i]] <- days[prevI]
+    }
+  }
+  data.frame(days=dayVec[seq_len(i)],prev=prevVec[seq_len(i)],
+             stringsAsFactors = FALSE)
+}
+
+compReturn <- function(Investment,k,colName) {
+  lags <- lagDays(Investment$dayCount,k)
+  rets <- sqldf('
+    SELECT
+      sp1.dayCount dayCount,
+      sp1.dayCount-sp2.dayCount width,
+      (sp1.Close - sp2.Close)/sp2.Close Return
+    FROM
+      lags
+    INNER JOIN
+      Investment sp1
+    ON
+      sp1.dayCount=lags.days
+    INNER JOIN
+      Investment sp2
+    ON
+      sp2.dayCount=lags.prev
+  ')
+  rets[[colName]] <- ((1+rets$Return)^(k/rets$width)-1)
+  rets <- rets[,c('dayCount',colName),drop=FALSE]
+  r <- merge(Investment,rets,by='dayCount')
+  r
+}
+
+
+SharpeRatio <- function(Investment,column,window) {
+  means <- rollapply(Investment[[column]],width=window,FUN=mean)
+  sds <- rollapply(Investment[[column]],width=window,FUN=sd)
+  sr <- c(rep(NA,nrow(Investment)-length(means)),means/sds)
+  sr
+}
+
+
+
+daysInYear <- 365.242
+daysInMonth <- daysInYear/12
+dayMap <- list('DailyReturn'=1,
+              'TenDayReturn'=10,
+              'MonthlyReturn'=daysInMonth,
+              'AnnualReturn'=daysInYear)
+
+
+refName='TNX.csv'
+
+for(instName in c('SP.csv','TENZ.csv')) {
+  print('********************************************************')
+  print(paste(refName,'vs',instName))
+  
+  # comparison safe invesement: 10-year treasury
+  refInstrument <- read.table(refName,
+                              header=TRUE,
+                              sep=',',
+                              stringsAsFactors=FALSE)
+  # confirm assumption length(unique(refInstrument$Date))==nrow(refInstrument)
+  if(length(unique(refInstrument$Date))!=nrow(refInstrument)) {
+    stop("duplicate day")
+  }
+  refInstrument$RefAnnualReturn <- refInstrument$Close/100
+  refInstrument <- refInstrument[,c('Date','RefAnnualReturn'),
+                                 drop=FALSE]
+  
+  for(nm in names(dayMap)) {
+    if(nm!='AnnualReturn') {
+      refInstrument[[paste('Ref',nm,sep='')]] <- 
+        (1+refInstrument$RefAnnualReturn)^(dayMap[[nm]]/daysInYear) - 1
+    }
+  }
+  
+  
+  
+  # Investment we are analyzing 
+  Investment <- read.table(instName,
+                           header=TRUE,
+                           sep=',',
+                           stringsAsFactors=FALSE)
+  # confirm assumption length(unique(Investment$Date))==nrow(Investment)
+  if(length(unique(Investment$Date))!=nrow(Investment)) {
+    stop("duplicate day")
+  }
+  Investment <- Investment[,c('Date','Close')]
+  
+  # restrict down to days we have both infos and merge refInstrument into Investment
+  commonDays <- intersect(refInstrument$Date,Investment$Date)
+  refInstrument <- refInstrument[refInstrument$Date %in% commonDays,,drop=FALSE]
+  Investment <- Investment[Investment$Date %in% commonDays,,drop=FALSE]
+  Investment <- merge(Investment,refInstrument,by='Date')
+  
+  # number the days
+  day <- as.POSIXct(Investment$Date,tz="UTC",format="%Y-%m-%d")
+  baseDay <- min(day)
+  Investment$dayCount <- as.numeric(difftime(day,baseDay,units='days'))
+  # confirm assumption length(unique(refInstrument$dayCount))==nrow(refInstrument)
+  if(length(unique(Investment$dayCount))!=nrow(Investment)) {
+    stop("duplicate day")
+  }
+  Investment$day <- day
+  # get Investment into dates moving forward order
+  Investment <- Investment[order(Investment$dayCount),,drop=FALSE]
+  
+  
+  window=500
+  for(icol in names(dayMap)) {
+    print('*****************************************')
+    stepName <- paste(instName,'vs',refName,icol)
+    print(stepName)
+    Investment <- compReturn(Investment,dayMap[[icol]],icol)
+    col <- paste('D',icol,sep='')
+    # get the Difference in returns or excess return
+    Investment[[col]] <- Investment[[icol]] - Investment[[paste('Ref',icol,sep='')]]
+    print(ggplot(Investment[!is.na(Investment[[col]]),,drop=FALSE],
+                 aes_string(x='day',y=col)) +
+            geom_point() + geom_smooth() +
+            ggtitle(stepName))
+    ncol <- paste('SharpeRatio',col,sep='_')
+    Investment[[ncol]] <- SharpeRatio(Investment,col,window)
+    print(summary(Investment[[ncol]]))
+    print(ggplot(Investment[!is.na(Investment[[ncol]]),,drop=FALSE],
+                 aes_string(x='day',y=ncol)) + 
+            geom_point() + 
+            ggtitle(paste(stepName,"\nSharpe ratio",col,'\nwindow=',window,'days')))
+    print('*****************************************')
+  }
+  print('********************************************************')
+}
+
+
+```
+
