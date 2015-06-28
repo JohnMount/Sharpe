@@ -84,100 +84,112 @@ dayMap <- list('DailyReturn'=1,
               'AnnualReturn'=daysInYear)
 
 
-refName='TNX.csv'
 
-for(instName in c('SP.csv','TENZ.csv')) {
-  print('********************************************************')
-  print(paste(refName,'vs',instName))
-  
-  # comparison safe invesement: 10-year treasury
-  refInstrument <- read.table(refName,
-                              header=TRUE,
-                              sep=',',
-                              stringsAsFactors=FALSE)
-  # confirm assumption length(unique(refInstrument$Date))==nrow(refInstrument)
-  if(length(unique(refInstrument$Date))!=nrow(refInstrument)) {
-    stop("duplicate day")
-  }
-  refInstrument$RefAnnualReturn <- refInstrument$Close/100
-  refInstrument <- refInstrument[,c('Date','RefAnnualReturn'),
-                                 drop=FALSE]
-  
-  for(nm in names(dayMap)) {
-    if(nm!='AnnualReturn') {
-      refInstrument[[paste('Ref',nm,sep='')]] <- 
-        (1+refInstrument$RefAnnualReturn)^(dayMap[[nm]]/daysInYear) - 1
+for(refName in c('TNX.csv','')) {
+  for(instName in c('SP.csv','TENZ.csv')) {
+    print('********************************************************')
+    refString <- refName
+    
+    
+    # Investment we are analyzing 
+    Investment <- read.table(instName,
+                             header=TRUE,
+                             sep=',',
+                             stringsAsFactors=FALSE)
+    # confirm assumption length(unique(Investment$Date))==nrow(Investment)
+    if(length(unique(Investment$Date))!=nrow(Investment)) {
+      stop("duplicate day")
     }
+    Investment <- Investment[,c('Date','Close')]
+    
+    if((!is.null(refName))&&(nchar(refName)>0)) {
+      # comparison safe invesement (assume "Quote" is an annual percent return)
+      # example is refName='TNX.csv' US 10 Year Treasury interest rate
+      refInstrument <- read.table(refName,
+                                  header=TRUE,
+                                  sep=',',
+                                  stringsAsFactors=FALSE)
+      # confirm assumption length(unique(refInstrument$Date))==nrow(refInstrument)
+      if(length(unique(refInstrument$Date))!=nrow(refInstrument)) {
+        stop("duplicate day")
+      }
+      refInstrument$RefAnnualReturn <- refInstrument$Close/100
+      refInstrument <- refInstrument[,c('Date','RefAnnualReturn'),
+                                     drop=FALSE]
+      for(nm in names(dayMap)) {
+        if(nm!='AnnualReturn') {
+          refInstrument[[paste('Ref',nm,sep='')]] <- 
+            (1+refInstrument$RefAnnualReturn)^(dayMap[[nm]]/daysInYear) - 1
+        }
+      }
+    } else {
+      refInstrument <- data.frame(Date=Investment$Date,
+                                  stringsAsFactors = FALSE)
+      for(nm in names(dayMap)) {
+        refInstrument[[paste('Ref',nm,sep='')]] <- 0
+      }
+      refString <- 'zero'
+    }
+    
+    print(paste(instName,'vs',refString))
+    
+    
+    # restrict down to days we have both infos and merge refInstrument into Investment
+    commonDays <- intersect(refInstrument$Date,Investment$Date)
+    refInstrument <- refInstrument[refInstrument$Date %in% commonDays,,drop=FALSE]
+    Investment <- Investment[Investment$Date %in% commonDays,,drop=FALSE]
+    Investment <- merge(Investment,refInstrument,by='Date')
+    
+    # number the days
+    day <- as.POSIXct(Investment$Date,tz="UTC",format="%Y-%m-%d")
+    baseDay <- min(day)
+    Investment$dayCount <- as.numeric(difftime(day,baseDay,units='days'))
+    # confirm assumption length(unique(refInstrument$dayCount))==nrow(refInstrument)
+    if(length(unique(Investment$dayCount))!=nrow(Investment)) {
+      stop("duplicate day")
+    }
+    Investment$day <- day
+    # get Investment into dates moving forward order
+    Investment <- Investment[order(Investment$dayCount),,drop=FALSE]
+    
+    
+    for(icol in names(dayMap)) {
+      print('*****************************************')
+      window <- min(500,max(10,round(3*dayMap[[icol]])))
+      stepName <- paste(instName,'vs',refString,icol)
+      print(stepName)
+      Investment <- compReturn(Investment,dayMap[[icol]],icol)
+      col <- paste('D',icol,sep='')
+      # get the Difference in returns or excess return
+      Investment[[col]] <- Investment[[icol]] - Investment[[paste('Ref',icol,sep='')]]
+      print(ggplot(Investment[!is.na(Investment[[col]]),,drop=FALSE],
+                   aes_string(x='day',y=col)) +
+              geom_point() + geom_smooth() +
+              ggtitle(stepName))
+      ncol <- paste('SharpeRatio',col,sep='_')
+      Investment <- SharpeRatio(Investment,col,window)
+      meanCol <- paste('Mean',col,sep='_')
+      stdCol <- paste('StdDev',col,sep='_')
+      msPlotFrame <- melt(Investment[!is.na(Investment[[stdCol]]),
+                                     c('day',meanCol,stdCol),drop=FALSE],
+                          id='day',
+                          value.name='return')
+      print(ggplot(msPlotFrame,
+                   aes_string(x='day',y='return',
+                              color='variable',linetype='variable')) + 
+              geom_line() +
+              scale_color_manual(values=c("green", "red")) +
+              ggtitle(paste(stepName,'\nreturn mean/stdev window=',window,'days')) +
+              theme(legend.position="bottom"))
+      print(summary(Investment[[ncol]]))
+      print(ggplot(Investment[!is.na(Investment[[ncol]]),,drop=FALSE],
+                   aes_string(x='day',y=ncol)) + 
+              geom_point() + 
+              ggtitle(paste(stepName,'\nSharpe ratio window=',window,'days')))
+      print('*****************************************')
+    }
+    print('********************************************************')
   }
-  
-  
-  
-  # Investment we are analyzing 
-  Investment <- read.table(instName,
-                           header=TRUE,
-                           sep=',',
-                           stringsAsFactors=FALSE)
-  # confirm assumption length(unique(Investment$Date))==nrow(Investment)
-  if(length(unique(Investment$Date))!=nrow(Investment)) {
-    stop("duplicate day")
-  }
-  Investment <- Investment[,c('Date','Close')]
-  
-  # restrict down to days we have both infos and merge refInstrument into Investment
-  commonDays <- intersect(refInstrument$Date,Investment$Date)
-  refInstrument <- refInstrument[refInstrument$Date %in% commonDays,,drop=FALSE]
-  Investment <- Investment[Investment$Date %in% commonDays,,drop=FALSE]
-  Investment <- merge(Investment,refInstrument,by='Date')
-  
-  # number the days
-  day <- as.POSIXct(Investment$Date,tz="UTC",format="%Y-%m-%d")
-  baseDay <- min(day)
-  Investment$dayCount <- as.numeric(difftime(day,baseDay,units='days'))
-  # confirm assumption length(unique(refInstrument$dayCount))==nrow(refInstrument)
-  if(length(unique(Investment$dayCount))!=nrow(Investment)) {
-    stop("duplicate day")
-  }
-  Investment$day <- day
-  # get Investment into dates moving forward order
-  Investment <- Investment[order(Investment$dayCount),,drop=FALSE]
-  
-  
-  for(icol in names(dayMap)) {
-    print('*****************************************')
-    window <- min(500,max(10,round(3*dayMap[[icol]])))
-    stepName <- paste(instName,'vs',refName,icol)
-    print(stepName)
-    Investment <- compReturn(Investment,dayMap[[icol]],icol)
-    col <- paste('D',icol,sep='')
-    # get the Difference in returns or excess return
-    Investment[[col]] <- Investment[[icol]] - Investment[[paste('Ref',icol,sep='')]]
-    print(ggplot(Investment[!is.na(Investment[[col]]),,drop=FALSE],
-                 aes_string(x='day',y=col)) +
-            geom_point() + geom_smooth() +
-            ggtitle(stepName))
-    ncol <- paste('SharpeRatio',col,sep='_')
-    Investment <- SharpeRatio(Investment,col,window)
-    meanCol <- paste('Mean',col,sep='_')
-    stdCol <- paste('StdDev',col,sep='_')
-    msPlotFrame <- melt(Investment[!is.na(Investment[[stdCol]]),
-                                   c('day',meanCol,stdCol),drop=FALSE],
-                        id='day',
-                        value.name='return')
-    print(ggplot(msPlotFrame,
-                 aes_string(x='day',y='return',
-                            color='variable',linetype='variable')) + 
-            geom_line() +
-            scale_color_manual(values=c("green", "red")) +
-            ggtitle(paste(stepName,'\nreturn mean/stdev window=',window,'days')) +
-            theme(legend.position="bottom"))
-    print(summary(Investment[[ncol]]))
-    print(ggplot(Investment[!is.na(Investment[[ncol]]),,drop=FALSE],
-                 aes_string(x='day',y=ncol)) + 
-            geom_point() + 
-            ggtitle(paste(stepName,'\nSharpe ratio window=',window,'days')))
-    print('*****************************************')
-  }
-  print('********************************************************')
 }
 
 
