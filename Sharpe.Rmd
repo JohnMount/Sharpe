@@ -12,6 +12,7 @@ options(gsubfn.engine = "R")
 library('sqldf')
 library('ggplot2')
 library('zoo')
+library('reshape2')
 
 
 # days : increasing sequence of integers
@@ -63,11 +64,10 @@ compReturn <- function(Investment,k,colName) {
 
 SharpeRatio <- function(Investment,column,window) {
   means <- rollapply(Investment[[column]],width=window,FUN=mean)
+  means <- c(rep(NA,nrow(Investment)-length(means)),means)
   sds <- rollapply(Investment[[column]],width=window,FUN=sd)
-  pad <- rep(NA,nrow(Investment)-length(means))
-  sr <- c(pad,means/sds)
-  means <- c(pad,means)
-  sds <- c(pad,sds)
+  sds <- c(rep(NA,nrow(Investment)-length(sds)),sds)
+  sr <- means/sds
   Investment[[paste('Mean',column,sep='_')]] <- means
   Investment[[paste('StdDev',column,sep='_')]] <- sds
   Investment[[paste('SharpeRatio',column,sep='_')]] <- sr
@@ -142,9 +142,9 @@ for(instName in c('SP.csv','TENZ.csv')) {
   Investment <- Investment[order(Investment$dayCount),,drop=FALSE]
   
   
-  window=500
   for(icol in names(dayMap)) {
     print('*****************************************')
+    window <- min(500,max(10,round(3*dayMap[[icol]])))
     stepName <- paste(instName,'vs',refName,icol)
     print(stepName)
     Investment <- compReturn(Investment,dayMap[[icol]],icol)
@@ -157,11 +157,19 @@ for(instName in c('SP.csv','TENZ.csv')) {
             ggtitle(stepName))
     ncol <- paste('SharpeRatio',col,sep='_')
     Investment <- SharpeRatio(Investment,col,window)
-#     print(ggplot(Investment[!is.na(Investment[[ncol]]),,drop=FALSE],
-#                  aes_string(x='day')) + 
-#             geom_point(aes_string(y=paste('Mean',col,sep='_'))) + 
-#             geom_point(aes_string(y=paste('StdDev',col,sep='_'))) + 
-#             ggtitle(paste(stepName,'\nreturn mean/stdev window=',window,'days')))
+    meanCol <- paste('Mean',col,sep='_')
+    stdCol <- paste('StdDev',col,sep='_')
+    msPlotFrame <- melt(Investment[!is.na(Investment[[stdCol]]),
+                                   c('day',meanCol,stdCol),drop=FALSE],
+                        id='day',
+                        value.name='return')
+    print(ggplot(msPlotFrame,
+                 aes_string(x='day',y='return',
+                            color='variable',linetype='variable')) + 
+            geom_line() +
+            scale_color_manual(values=c("green", "red")) +
+            ggtitle(paste(stepName,'\nreturn mean/stdev window=',window,'days')) +
+            theme(legend.position="bottom"))
     print(summary(Investment[[ncol]]))
     print(ggplot(Investment[!is.na(Investment[[ncol]]),,drop=FALSE],
                  aes_string(x='day',y=ncol)) + 
