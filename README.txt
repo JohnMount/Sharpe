@@ -8,6 +8,9 @@ S&P close prices from Yahoo finance:
 Comparison annual interest rate:
   10 year T note
   http://finance.yahoo.com/q/hp?s=^TNX+Historical+Prices
+or
+  Fred Prime rate
+  https://research.stlouisfed.org/fred2/series/DPRIME#
 
 A government bond fund:
   Pimco TENZ

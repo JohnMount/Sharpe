@@ -13,6 +13,7 @@ library('sqldf')
 library('ggplot2')
 library('zoo')
 library('reshape2')
+library('gdata')
 
 
 # days : increasing sequence of integers
@@ -75,7 +76,17 @@ SharpeRatio <- function(Investment,column,window) {
 }
 
 
+# convert FRED download into YAHOO like format
+prime <- read.xls('fredgraph.xls',
+                  sheet=1,stringsAsFactors=FALSE,
+                  blank.lines.skip=TRUE,skip=8)
+prime <- prime[complete.cases(prime),,drop=FALSE]
+colnames(prime) <- c('Date','Close')
+write.table(prime,file='prime.csv',
+            row.names=FALSE,sep=',',quote=FALSE)
 
+
+# define dates
 daysInYear <- 365.242
 daysInMonth <- daysInYear/12
 dayMap <- list('DailyReturn'=1,
@@ -85,7 +96,7 @@ dayMap <- list('DailyReturn'=1,
 
 
 
-for(refName in c('TNX.csv','')) {
+for(refName in c('prime.csv','TNX.csv','')) {
   for(instName in c('SP.csv','TENZ.csv')) {
     print('********************************************************')
     refString <- refName
@@ -182,6 +193,9 @@ for(refName in c('TNX.csv','')) {
               ggtitle(paste(stepName,'\nreturn mean/stdev window=',window,'days')) +
               theme(legend.position="bottom"))
       print(summary(Investment[[ncol]]))
+      if(icol=='AnnualReturn') {
+        print("!!!!!")
+      }
       print(ggplot(Investment[!is.na(Investment[[ncol]]),,drop=FALSE],
                    aes_string(x='day',y=ncol)) + 
               geom_point() + 
