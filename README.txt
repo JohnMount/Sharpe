@@ -12,7 +12,7 @@ Comparison annual interest rate:
   10 year T note
   http://finance.yahoo.com/q/hp?s=^TNX+Historical+Prices
 or
-  Fred Prime rate
+  Fed Prime rate (from FRED)
   https://research.stlouisfed.org/fred2/series/DPRIME#
 
 A government bond fund:
