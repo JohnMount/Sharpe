@@ -1,5 +1,8 @@
 
-Code and data for article: http://www.win-vector.com/blog/2015/06/what-is-a-good-sharpe-ratio/
+Github repository showing example Sharpe calculation (file Sharpe.Rmd).
+
+Code and data for article: 
+  http://www.win-vector.com/blog/2015/06/what-is-a-good-sharpe-ratio/
 
 S&P close prices from Yahoo finance:
   S&P 500
@@ -19,3 +22,7 @@ A government bond fund:
 Calculation def from:
   http://web.stanford.edu/~wfsharpe/art/sr/sr.htm
 
+
+
+This repository:
+  https://github.com/JohnMount/Sharpe
